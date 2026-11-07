@@ -1,0 +1,10 @@
+{
+  "name": "web-10-js-avancado",
+  "private": true,
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

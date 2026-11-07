@@ -1,0 +1,7 @@
+# Quem altera estes arquivos precisa da aprovação do dono (evita "colar" nos testes).
+/tests/                  @NicolasDimitri
+/scripts/                @NicolasDimitri
+/.github/                @NicolasDimitri
+/package.json            @NicolasDimitri
+/package-lock.json       @NicolasDimitri
+/playwright.config.js    @NicolasDimitri

@@ -1,0 +1,66 @@
+# Workflow = roteiro que o GitHub Actions executa automaticamente.
+name: Autoavaliação
+
+# QUANDO roda: a cada PR aberto para a main e a cada novo commit enviado (git push) nesse PR.
+on:
+  pull_request:
+    branches: [main]
+
+# PERMISSÕES do robô: ler o código e escrever comentário no PR.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  avaliar:                       # nome do "check" que a proteção da main exige
+    runs-on: ubuntu-24.04        # máquina virtual temporária do GitHub
+    timeout-minutes: 5
+    steps:
+      # 1) Baixa o código do PR para a máquina
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # o código do aluno roda no CI: não deixe o token gravado em .git/config
+
+      # 2) Instala o Node.js
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # 3) Instala as dependências (o Playwright aqui só serve como executor de testes; não precisa de navegador)
+      - run: npm ci
+
+      # 4) Roda os testes: carrega o solucao.js do aluno (em um processo separado, com limite de tempo) e confere cada requisito
+      - name: Rodar testes
+        run: npx playwright test
+
+      # 5) Transforma o resultado em uma tabela (✅/❌ por requisito)
+      #    "if: always()" = roda mesmo quando os testes falham
+      - name: Montar tabela de requisitos
+        if: always()
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha }}
+        run: node scripts/gerar-checklist.js
+
+      # 6) Publica a tabela como um COMENTÁRIO NOVO no PR a cada commit (os anteriores ficam como histórico).
+      #    Se o mesmo commit for reexecutado, atualiza só o comentário daquele commit (evita duplicar).
+      - name: Publicar a tabela no PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (!fs.existsSync('comentario.md')) return;
+            const body = fs.readFileSync('comentario.md', 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const marca = `<!-- autoavaliacao:${context.payload.pull_request.head.sha} -->`;
+            const comentarios = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const doMesmoCommit = comentarios.find((c) => c.body.includes(marca));
+            if (doMesmoCommit) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: doMesmoCommit.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
